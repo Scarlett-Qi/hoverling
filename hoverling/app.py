@@ -18,7 +18,7 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, Pango
 
-from .core import OCR, Target, explicit_target, target_at
+from .core import OCR, ROOT, Target, explicit_target, target_at
 from .formatting import render_markdown
 from .translate import MYMEMORY_LANGUAGES, Settings, TranslationError, Translator, api_url, translate_youdao, translate_deepl
 
@@ -104,7 +104,7 @@ class App:
         self.alt_down = False
         self.target = None
         self.shown = None
-        self.last_hover = time.monotonic()
+        self.tip_deadline = None
         self.manual_mode = False
         self.manual_running = False
         self.request_in_progress = False
@@ -364,6 +364,10 @@ class App:
         self.copy_button.set_label("复制选中文字")
         self.output.get_buffer().set_text("选中文字（尚未发送）：\n\n" + target.query + "\n\n点击浮窗中的“翻译选中文字”继续。")
         self.status.set_text(f"已读取 {len(target.query)} 个字符 · 点浮窗中的翻译按钮")
+        self.open_tip()
+
+    def open_tip(self):
+        self.tip_deadline = time.monotonic() + 1.5
         self.tip.show_all()
         self.position_tip()
         GLib.idle_add(self.position_tip)
@@ -424,24 +428,29 @@ class App:
             self.read_clipboard()
         self.selection_hotkey_down = selection_hotkey
         self.clipboard_hotkey_down = clipboard_hotkey
+        if self.tip.get_visible():
+            if self.inside(self.tip, x, y):
+                self.tip_deadline = None
+                return True
+            if self.tip_deadline is None:
+                self.tip_deadline = now + 0.5
+            if now >= self.tip_deadline:
+                self.tip.hide()
+                # Keep pending selection reads and let translations finish in the main window.
+                self.last_position = (x, y)
+                self.still_since = now
+                self.scanned = abs(x - self.anchor[0]) < 24 and abs(y - self.anchor[1]) < 24
+            elif self.settings.values["trigger"] != "selection":
+                return True
         if self.settings.values["trigger"] == "selection":
             return self.tick_selection(x, y, state, now)
-        if self.inside(self.tip, x, y, 10):
-            self.last_hover = now
-            return True
         moved = abs(x - self.last_position[0]) > 3 or abs(y - self.last_position[1]) > 3
         if moved:
             self.last_position = (x, y)
             self.still_since = now
             self.scanned = False
-            near_visible_tip = self.tip.get_visible() and abs(x - self.anchor[0]) < 24 and abs(y - self.anchor[1]) < 24
-            if not self.manual_mode and not near_visible_tip:
+            if not self.manual_mode:
                 self.invalidate()
-        near_anchor = abs(x - self.anchor[0]) < 24 and abs(y - self.anchor[1]) < 24
-        if self.tip.get_visible() and not near_anchor and now - self.last_hover > 0.65:
-            self.tip.hide()
-        if self.tip.get_visible() and near_anchor:
-            return True
         if not self.enabled or self.inside(self.window, x, y) or self.manual_running:
             return True
         if self.settings.values["trigger"] == "alt":
@@ -529,12 +538,12 @@ class App:
             self.manual_running = False
             self.request_in_progress = False
             self.sentence_button.set_sensitive(True)
-            self.show_result(target, text, source)
+            self.show_result(target, text, source, show_tip=self.tip.get_visible())
             if target.explicit:
                 self.status.set_text("已返回所选文字的结果 · 可继续划选其他内容")
         return False
 
-    def show_result(self, target, text, source):
+    def show_result(self, target, text, source, *, show_tip=True):
         self.selection_preview = False
         self.sentence_button.set_label("重新翻译所选" if target.explicit else "翻译上下文")
         self.copy_button.set_label("复制结果")
@@ -552,18 +561,18 @@ class App:
         buffer.insert_markup(buffer.get_end_iter(), formatted.markup, -1)
         buffer.insert(buffer.get_end_iter(), suffix)
         self.output.set_buffer(buffer)
-        if self.manual_mode:
+        if self.manual_mode or not show_tip:
             return
         self.tip_title.set_text(target.query[:100] + ("…" if len(target.query) > 100 else ""))
         self.tip_title.set_tooltip_text(target.query)
         self.tip_text.set_markup(formatted.markup)
         self.tip_source.set_text(source)
-        self.tip.show_all()
-        self.position_tip()
-        GLib.idle_add(self.position_tip)
-        self.last_hover = time.monotonic()
+        if not self.tip.get_visible():
+            self.open_tip()
+        else:
+            GLib.idle_add(self.position_tip, True)
 
-    def position_tip(self):
+    def position_tip(self, keep_position=False):
         if not self.tip.get_visible():
             return False
         x, y = self.anchor
@@ -576,6 +585,8 @@ class App:
             tx = x - size.width - 18
         if ty + size.height > area.y + area.height:
             ty = y - size.height - 20
+        if keep_position:
+            tx, ty = self.tip.get_position()
         self.tip.move(max(area.x, min(tx, area.x + area.width - size.width)),
                       max(area.y, min(ty, area.y + area.height - size.height)))
         return False
@@ -832,6 +843,9 @@ class App:
 
 
 def main():
+    GLib.set_prgname("hoverling")
+    GLib.set_application_name("指译 HoverLing")
+    Gdk.set_program_class("HoverLing")
     parser = argparse.ArgumentParser(description="指译 HoverLing · Linux 桌面划词翻译")
     parser.add_argument("--settings", action="store_true", help="启动时打开设置")
     parser.add_argument("--setup-youdao", action="store_true", help="打开有道翻译设置，填写 App Key / Secret")
@@ -847,6 +861,10 @@ def main():
     if "X11" not in Gdk.Display.get_default().__gtype__.name:
         print("本版需要 X11 桌面会话。", file=sys.stderr)
         return 2
+    try:
+        Gtk.Window.set_default_icon_from_file(str(ROOT / "icon.svg"))
+    except GLib.Error as exc:
+        print(f"无法加载指译图标：{exc.message}", file=sys.stderr)
     single = socket.socket(socket.AF_UNIX)
     try:
         single.bind("\0hoverling-" + str(os.getuid()))
