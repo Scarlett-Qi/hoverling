@@ -123,13 +123,14 @@ class App:
         self.primary.connect("owner-change", self.selection_changed)
         self._make_control()
         self._make_tip()
+        self._make_tray()
         self.timer_id = GLib.timeout_add(90, self.tick)
 
     def _make_control(self):
         self.window = Gtk.Window(title="指译 HoverLing · Linux 桌面翻译")
         self.window.set_default_size(480, 760)
         self.window.set_border_width(22)
-        self.window.connect("delete-event", lambda *_: self.quit())
+        self.window.connect("delete-event", self.close_control)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         self.window.add(box)
         box.pack_start(label("指译 HoverLing", "title"), False, False, 0)
@@ -184,8 +185,50 @@ class App:
         scroll.add(self.output)
         box.pack_start(scroll, True, True, 0)
         self.output.get_buffer().set_text("先划选要翻译的文字，再点击浮窗中的“翻译选中文字”。\n\n只使用你选中的词、短语或句子，不自动加入附近文字。\n\n读不到划选时，可以复制后按 Ctrl + Alt + C，或粘贴到上方输入框。\n\n有道、DeepL、谷歌和 AI 的配置在“取词与 AI 设置”中。")
-        box.pack_start(label("划选模式不截图、不取附近文字。先在本机预览，点“翻译”后才发送选中文字。关闭此窗口会退出。", "note"), False, False, 0)
+        self.close_hint = label("", "note")
+        box.pack_start(self.close_hint, False, False, 0)
         self.window.show_all()
+
+    def _make_tray(self):
+        self.tray = None
+        try:
+            from .tray import PanelIndicator
+            self.tray = PanelIndicator(ROOT / "icon.svg", [
+                ("打开指译", self.open_control), ("设置", self.open_settings_from_tray),
+                ("退出指译", self.quit),
+            ], self.tray_changed)
+        except (ImportError, ValueError, GLib.Error) as exc:
+            print(f"系统托盘不可用：{exc}", file=sys.stderr)
+        self.tray_changed()
+
+    def open_control(self):
+        self.window.show()
+        self.window.deiconify()
+        self.window.present()
+
+    def open_settings_from_tray(self):
+        self.open_control()
+        for dialog in Gtk.Window.list_toplevels():
+            if isinstance(dialog, Gtk.Dialog) and dialog.get_transient_for() == self.window and dialog.get_visible():
+                dialog.present()
+                return
+        self.show_settings()
+
+    def tray_changed(self, *_):
+        if not self.running:
+            return
+        embedded = self.tray is not None and self.tray.connected
+        self.close_hint.set_text("关闭主窗口可收起到托盘。点击顶栏图标可打开系统菜单。"
+                                 if embedded else "当前桌面未连接系统托盘，关闭主窗口将退出指译。")
+        if not embedded and not self.window.get_visible():
+            self.open_control()
+
+    def close_control(self, *_):
+        if self.tray is None or not self.tray.connected:
+            return self.quit()
+        self.tip.hide()
+        self.window.hide()
+        return True
 
     def _make_tip(self):
         self.tip = Gtk.Window(type=Gtk.WindowType.TOPLEVEL)
@@ -829,6 +872,8 @@ class App:
         if not self.running:
             return True
         self.running = False
+        if self.tray is not None:
+            self.tray.close()
         if GLib.MainContext.default().find_source_by_id(self.timer_id):
             GLib.source_remove(self.timer_id)
         self.invalidate()
@@ -870,7 +915,7 @@ def main():
         single.bind("\0hoverling-" + str(os.getuid()))
     except OSError:
         message = Gtk.MessageDialog(message_type=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK,
-                                    text="指译已经在运行，请查看任务栏中的窗口。")
+                                    text="指译已经在运行。请从系统托盘菜单选择“打开指译”，或切换到已打开的指译窗口。")
         message.run()
         message.destroy()
         return 0

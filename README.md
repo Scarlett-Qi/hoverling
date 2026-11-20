@@ -15,6 +15,8 @@
 
 也可以直接试用。在同一个文件夹运行 `bash launch.sh --selection`，即可启动划词模式。
 
+**收起到托盘**：点击主窗口的 × 后，已开启的划词翻译会继续运行。菜单由支持 AppIndicator / StatusNotifierItem 的桌面面板绘制，跟随面板主题。点击图标即可展开菜单，具体鼠标按键由面板处理。选择 **打开指译** 可显示主窗口，选择 **设置** 可直接调整取词方式和翻译接口。卸载前请先从菜单选择 **退出指译**。如果桌面没有提供系统托盘，× 会直接退出。
+
 <details>
 <summary>系统要求与依赖安装</summary>
 
@@ -23,7 +25,7 @@
 Ubuntu 24.04 安装依赖可运行以下命令。Ubuntu 22.04 将 `libtesseract5` 改为 `libtesseract4`。
 
 ```bash
-sudo apt install python3-gi gir1.2-gtk-3.0 libtesseract5
+sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-dbusmenu-glib-0.4 libtesseract5
 ```
 
 </details>
