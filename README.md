@@ -2,9 +2,11 @@
 
 在 Linux **X11 / Xorg** 桌面上划选一个词、一句对白或一段文字，松开鼠标即可预览，点击 **翻译选中文字** 查看中文释义。默认使用离线英汉词库。想弄清短语在句中的意思，可以选中整句，交给 AI 解释。
 
+**[下载最新版（Linux X11）](https://github.com/Scarlett-Qi/hoverling/releases/latest)** · [查看历史版本](https://github.com/Scarlett-Qi/hoverling/releases)
+
 ## 安装与卸载
 
-解压后打开 `hoverling` 文件夹（克隆仓库则打开仓库根目录）。看到 `install.sh` 和 `uninstall.sh` 后，在这个文件夹里打开终端。安装和卸载都在这里运行。
+在发布页的 **Assets** 中下载文件名以 `-Linux-X11.zip` 结尾的程序包。解压后打开 `hoverling` 文件夹，在里面打开终端，按下表安装或卸载。如果你是通过 Git 克隆项目，请在仓库根目录运行相同命令。
 
 | 操作 | 命令 | 使用说明 |
 | --- | --- | --- |
