@@ -83,7 +83,7 @@ def main():
     name = "HoverLing-Windows-x64.zip" if windows else "HoverLing-Linux-X11.zip"
     with tempfile.TemporaryDirectory(dir=out) as folder:
         work = Path(folder)
-        stage = work / ("HoverLing-Windows" if windows else "hoverling")
+        stage = work / "hoverling"
         package = stage / "hoverling"
         add_files(ROOT, stage, DATA)
         add_files(ROOT / "hoverling", package, CORE)
@@ -96,7 +96,8 @@ def main():
             add_files(ROOT, stage, ("icon.svg", "install.sh", "launch.sh", "uninstall.sh"))
             add_files(ROOT / "hoverling", package, ("app.py", "tray.py"))
             for directory in ("tessdata", "tests"):
-                shutil.copytree(ROOT / directory, stage / directory, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+                shutil.copytree(ROOT / directory, stage / directory,
+                                ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "test_windows_*.py"))
         archive = work / name
         with ZipFile(archive, "w", ZIP_DEFLATED) as zipped:
             for path in sorted(stage.rglob("*")):

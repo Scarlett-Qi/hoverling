@@ -1,3 +1,4 @@
+from ctypes import wintypes
 import os
 from pathlib import Path
 import threading
@@ -9,10 +10,22 @@ from ..theme import CARD_PADDING, CONTROL_RADIUS, WORD
 from ..core import explicit_target
 from ..formatting import render_markdown
 from ..translate import TranslationError, Translator
+from .gestures import SelectionGesture
+from .mouse import MouseButtons, window_at
 from .secrets import WindowsSettings
 from .selection import SelectionReader, external_window, user32
 from .settings import SettingsDialog, mode_label
 from .style import CANVAS, MUTED, PAPER, Surface, action, label, reading_field, typeface, window_corners
+
+
+CLIPBOARD_HOTKEY = 1
+TOGGLE_HOTKEY = 2
+TRANSLATION_WAIT_SECONDS = 60
+# Win32 modifier values. MOD_NOREPEAT keeps a held key from toggling repeatedly.
+MOD_ALT = 0x0001
+MOD_CONTROL = 0x0002
+MOD_NOREPEAT = 0x4000
+user32.RegisterHotKey.argtypes = (wintypes.HWND, wintypes.INT, wintypes.UINT, wintypes.UINT)
 
 
 def set_clipboard(text):
@@ -182,8 +195,8 @@ class Main(wx.Frame):
         self.translator = Translator()
         self.closed = False
         self.select_id = self.request_id = 0
-        self.busy = self.drag = None
-        self.down = False
+        self.busy = None
+        self.gesture = SelectionGesture()
         panel = wx.Panel(self)
         panel.SetBackgroundColour(CANVAS)
         d = panel.FromDIP
@@ -201,7 +214,8 @@ class Main(wx.Frame):
         self.toggle = action(card, "暂停划词翻译", self.toggle_selection, primary=True)
         controls.Add(self.toggle, 0, wx.EXPAND)
         controls.AddSpacer(d(10))
-        controls.Add(action(card, "读取剪贴板", self.clipboard), 0, wx.EXPAND)
+        self.clipboard_button = action(card, "读取剪贴板", self.clipboard)
+        controls.Add(self.clipboard_button, 0, wx.EXPAND)
         card_box = wx.BoxSizer(wx.VERTICAL)
         card_box.Add(controls, 1, wx.EXPAND | wx.ALL, d(CARD_PADDING))
         card.SetSizer(card_box)
@@ -257,14 +271,23 @@ class Main(wx.Frame):
         self.preview = Preview(self)
         self.tray = Tray(self, icon)
         self.reader = SelectionReader(self.deliver, self.selection_unavailable)
-        self.hotkey = self.RegisterHotKey(1, wx.MOD_CONTROL | wx.MOD_ALT, ord("C"))
-        self.SetStatusText("复制后按 Ctrl+Alt+C 预览" if self.hotkey else "快捷键被占用，可使用“读取剪贴板”")
-        self.Bind(wx.EVT_HOTKEY, lambda event: self.clipboard(), id=1)
+        self.hotkey = self.RegisterHotKey(CLIPBOARD_HOTKEY, wx.MOD_CONTROL | wx.MOD_ALT, ord("C"))
+        self.toggle_hotkey = user32.RegisterHotKey(
+            self.GetHandle(), TOGGLE_HOTKEY, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, ord("Y")
+        )
+        toggle_hint = "Ctrl+Alt+Y 开关划词" if self.toggle_hotkey else "Ctrl+Alt+Y 不可用，请点击按钮开关划词"
+        clipboard_hint = "Ctrl+Alt+C 预览剪贴板" if self.hotkey else "Ctrl+Alt+C 不可用，请点击按钮读取剪贴板"
+        self.toggle.SetToolTip(toggle_hint)
+        self.clipboard_button.SetToolTip(clipboard_hint)
+        self.SetStatusText(toggle_hint + " · " + clipboard_hint)
+        self.Bind(wx.EVT_HOTKEY, lambda event: self.clipboard(), id=CLIPBOARD_HOTKEY)
+        self.Bind(wx.EVT_HOTKEY, lambda event: self.toggle_selection(), id=TOGGLE_HOTKEY)
         self.source.Bind(wx.EVT_TEXT, self.edit)
         self.Bind(wx.EVT_CLOSE, self.on_close)
         self.timer = wx.Timer(self)
         self.Bind(wx.EVT_TIMER, self.poll, self.timer)
-        self.timer.Start(60)
+        self.mouse = MouseButtons(self.mouse_button)
+        self.timer.Start(60 if self.mouse.hook else 16)
         self.Centre()
 
     def selection_unavailable(self):
@@ -294,7 +317,7 @@ class Main(wx.Frame):
             wx.MessageBox(str(exc), "无法保存设置", parent=self)
             return
         self.select_id += 1
-        self.drag = None
+        self.gesture.reset()
         self.update_controls()
 
     def configure(self):
@@ -305,6 +328,7 @@ class Main(wx.Frame):
                 self.service.GetParent().Layout()
                 self.invalidate()
                 self.select_id += 1
+                self.gesture.reset()
                 self.SetStatusText("设置已保存")
 
     def invalidate(self):
@@ -324,17 +348,22 @@ class Main(wx.Frame):
     def poll(self, event):
         point = wx.GetMousePosition()
         self.preview.track(point)
-        down = bool(user32.GetAsyncKeyState(1) & 0x8000)
-        if down and not self.down:
+        if self.busy is not None and time.monotonic() >= self.translation_deadline:
+            self.finish(self.request_id, "等待翻译结果超时。可以重新翻译，或在设置中更换服务。", "翻译未完成")
+        if not self.mouse.hook:
+            self.mouse.poll_fallback(tuple(point), time.monotonic_ns() // 1_000_000)
+
+    def mouse_button(self, down, point, timestamp):
+        if self.closed or self.settings.values["trigger"] != "selection":
+            return
+        window = window_at(point)
+        if down:
             self.select_id += 1
-            window = external_window()
-            self.drag = (point, window) if window and self.settings.values["trigger"] == "selection" else None
-        elif self.down and not down and self.drag:
-            start, window = self.drag
-            self.drag = None
-            if window == external_window() and max(abs(start.x-point.x), abs(start.y-point.y)) >= self.FromDIP(4):
-                wx.CallLater(80, self.read, self.select_id, window, point)
-        self.down = down
+            self.gesture.down(window, point, timestamp)
+        elif self.gesture.up(window, point, self.FromDIP(4), user32.GetDoubleClickTime(),
+                             (user32.GetSystemMetrics(36), user32.GetSystemMetrics(37))):
+            # Let the other application finish updating its selection first.
+            wx.CallLater(80, self.read, self.select_id, window, wx.Point(*point))
 
     def read(self, serial, window, point):
         if not self.closed and serial == self.select_id and external_window() == window:
@@ -374,16 +403,16 @@ class Main(wx.Frame):
             self.SetStatusText("请先复制 1 到 5000 个字符，再读取剪贴板")
 
     def translate(self, text):
-        try:
-            target = explicit_target(text)
-        except ValueError as exc:
-            self.SetStatusText(str(exc))
+        text = text.strip()
+        if not 1 <= len(text) <= 5000:
+            self.SetStatusText("请选择 1 到 5000 个字符")
             return
-        if self.busy == target.query:
+        if self.busy == text:
             return
         self.request_id += 1
         serial = self.request_id
-        self.busy = target.query
+        self.translation_deadline = time.monotonic() + TRANSLATION_WAIT_SECONDS
+        self.busy = text
         self.go.Disable()
         self.copy.Hide()
         self.copy.GetParent().Layout()
@@ -398,6 +427,7 @@ class Main(wx.Frame):
 
         def work():
             try:
+                target = explicit_target(text)
                 meaning, note = self.translator.translate(target, settings)
                 rendered = render_markdown(meaning).text
             except TranslationError as exc:
@@ -409,7 +439,7 @@ class Main(wx.Frame):
         threading.Thread(target=work, daemon=True).start()
 
     def finish(self, serial, text, note):
-        if self.closed or serial != self.request_id:
+        if self.closed or serial != self.request_id or self.busy is None:
             return
         self.busy = None
         self.go.Enable()
@@ -438,8 +468,11 @@ class Main(wx.Frame):
             return
         self.closed = True
         self.timer.Stop()
+        self.mouse.close()
         if self.hotkey:
-            self.UnregisterHotKey(1)
+            self.UnregisterHotKey(CLIPBOARD_HOTKEY)
+        if self.toggle_hotkey:
+            self.UnregisterHotKey(TOGGLE_HOTKEY)
         self.tray.RemoveIcon()
         self.tray.Destroy()
         self.preview.Destroy()

@@ -14,7 +14,10 @@ user32.GetAsyncKeyState.restype = ctypes.c_short
 
 
 def external_window():
-    window = user32.GetForegroundWindow()
+    return external_process_window(user32.GetForegroundWindow())
+
+
+def external_process_window(window):
     process = wintypes.DWORD()
     if window and user32.GetWindowThreadProcessId(window, ctypes.byref(process)) and process.value != os.getpid():
         return window
