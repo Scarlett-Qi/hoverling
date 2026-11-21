@@ -1,2 +1,2 @@
-"""HoverLing — a small Linux desktop hover translator."""
-__version__ = "0.5.4"
+"""HoverLing — a desktop selection translator."""
+__version__ = "0.6.0"

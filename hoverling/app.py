@@ -18,22 +18,23 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, Pango
 
+from . import theme
 from .core import OCR, ROOT, Target, explicit_target, target_at
 from .formatting import render_markdown
 from .translate import MYMEMORY_LANGUAGES, Settings, TranslationError, Translator, api_url, translate_youdao, translate_deepl
 
-CSS = b"""
-window { background: #f5f7fb; color: #172538; }
-.card { background: #ffffff; border: 1px solid #d8e2ee; border-radius: 12px; padding: 16px; }
-.title { font-size: 22px; font-weight: bold; }
-.subtitle { color: #5b6d82; font-size: 12px; }
-.word { font-size: 19px; font-weight: bold; color: #146455; }
-.meaning { font-size: 14px; }
-.note { color: #5b6d82; font-size: 11px; }
-button { border-radius: 7px; padding: 6px 12px; }
-button.suggested-action { background: #167868; color: white; }
-entry { border-radius: 7px; padding: 6px; }
-"""
+CSS = f"""
+window {{ background: {theme.CANVAS}; color: {theme.INK}; }}
+.card {{ background: {theme.PAPER}; border: 1px solid {theme.LINE}; border-radius: {theme.CARD_RADIUS}px; padding: {theme.CARD_PADDING}px; }}
+.title {{ font-size: 22px; font-weight: bold; }}
+.subtitle {{ color: {theme.MUTED}; font-size: 12px; }}
+.word {{ font-size: 19px; font-weight: bold; color: {theme.WORD}; }}
+.meaning {{ font-size: 14px; }}
+.note {{ color: {theme.MUTED}; font-size: 11px; }}
+button {{ border-radius: {theme.CONTROL_RADIUS}px; padding: 6px 12px; }}
+button.suggested-action {{ background: {theme.ACCENT}; color: white; }}
+entry {{ border-radius: {theme.CONTROL_RADIUS}px; padding: 6px; }}
+""".encode("ascii")
 
 
 def label(text="", style="", wrap=True):

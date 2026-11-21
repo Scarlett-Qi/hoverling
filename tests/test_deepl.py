@@ -1,3 +1,4 @@
+import os
 import io
 import json
 import tempfile
@@ -86,7 +87,8 @@ class DeepLTests(unittest.TestCase):
             self.assertEqual(loaded.values['deepl_api_key'],'placeholder:fx')
             self.assertEqual(loaded.values['network_provider'],'deepl')
             self.assertEqual(loaded.values['deepl_server'],'free')
-            self.assertEqual(path.stat().st_mode&0o777,0o600)
+            if os.name == "posix":
+                self.assertEqual(path.stat().st_mode&0o777,0o600)
 
 
 if __name__=='__main__':unittest.main()

@@ -8,4 +8,4 @@ if ! /usr/bin/python3 -c 'import gi; gi.require_version("Gtk", "3.0")' >/dev/nul
   echo 'Ubuntu 22.04 使用 libtesseract4 代替 libtesseract5。'
   exit 1
 fi
-exec /usr/bin/python3 -m hoverling.app "$@"
+exec /usr/bin/python3 -m hoverling "$@"

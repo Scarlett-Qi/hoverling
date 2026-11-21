@@ -159,7 +159,8 @@ class TranslationTests(unittest.TestCase):
             path = Path(folder) / "config" / "settings.json"
             settings = Settings(path)
             settings.save({"api_key": "a-test-key"})
-            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            if os.name == "posix":
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             self.assertEqual(Settings(path).values["api_key"], "a-test-key")
 
     def test_invalid_config_uses_safe_defaults(self):

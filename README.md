@@ -1,64 +1,54 @@
 # 指译 HoverLing
 
-在 Linux **X11 / Xorg** 桌面上划选一个词、一句对白或一段文字，松开鼠标即可预览，点击 **翻译选中文字** 查看中文释义。默认使用离线英汉词库。想弄清短语在句中的意思，可以选中整句，交给 AI 解释。
+在 Linux X11 或 Windows 上划选单词、对白或段落，松开鼠标预览，点击翻译查看中文释义。默认使用离线英汉词典。想理解短语在句里的意思，可以选中整句并启用 AI 解释。
 
-**[下载最新版（Linux X11）](https://github.com/Scarlett-Qi/hoverling/releases/latest)** · [查看历史版本](https://github.com/Scarlett-Qi/hoverling/releases)
+**[下载最新版（Windows x64 / Linux X11）](https://github.com/Scarlett-Qi/hoverling/releases/latest)** · [历史版本](https://github.com/Scarlett-Qi/hoverling/releases)
 
-## 安装与卸载
+## 开始使用
 
-在发布页的 **Assets** 中下载文件名以 `-Linux-X11.zip` 结尾的程序包。解压后打开 `hoverling` 文件夹，在里面打开终端，按下表安装或卸载。如果你是通过 Git 克隆项目，请在仓库根目录运行相同命令。
-
-| 操作 | 命令 | 使用说明 |
+| 平台 | 打开程序 | 卸载 |
 | --- | --- | --- |
-| 安装 | `bash install.sh` | 安装后在应用菜单搜索 **指译**，打开后点击 **开启划词翻译**。 |
-| 卸载 | `bash uninstall.sh` | 先关闭指译，再运行命令。已安装的程序和菜单入口会被移除，解压包、个人设置和 API 密钥会保留。 |
-
-也可以直接试用。在同一个文件夹运行 `bash launch.sh --selection`，即可启动划词模式。
-
-**收起到托盘**：点击主窗口的 × 后，已开启的划词翻译会继续运行。菜单由支持 AppIndicator / StatusNotifierItem 的桌面面板绘制，跟随面板主题。点击图标即可展开菜单，具体鼠标按键由面板处理。选择 **打开指译** 可显示主窗口，选择 **设置** 可直接调整取词方式和翻译接口。卸载前请先从菜单选择 **退出指译**。如果桌面没有提供系统托盘，× 会直接退出。
+| Linux X11 / Xorg | 下载以 `-Linux-X11.zip` 结尾的包，解压后在 `hoverling` 目录运行 `bash install.sh`。在应用菜单搜索「指译」，点击「开启划词翻译」。也可直接运行 `bash launch.sh --selection`。 | 从托盘退出后，在解压包或安装目录运行 `bash uninstall.sh`。个人设置和密钥会保留。 |
+| Windows 10 / 11 x64 | 下载以 `-Windows-x64.zip` 结尾的包，整个解压，双击 `HoverLing.exe`。便携包已含运行环境。 | 从托盘退出后删除解压目录。需要同时清除设置时，再删除 `%LOCALAPPDATA%\HoverLing`。 |
 
 <details>
-<summary>系统要求与依赖安装</summary>
+<summary>Linux 系统要求与依赖</summary>
 
-使用 X11 / Xorg 会话、系统 Python 3.10+、PyGObject 和 GTK3。悬停取词还需要 Tesseract 4 或 5，英文识别模型已随包提供。使用 Wayland 的 Ubuntu 用户可在登录界面选择可用的 Xorg 会话。
+使用 X11 / Xorg 会话、系统 Python 3.10+、PyGObject 和 GTK3。悬停取词还需要 Tesseract 4 或 5，包内附英文识别模型。使用 Wayland 的 Ubuntu 用户可在登录界面选择可用的 Xorg 会话。
 
-Ubuntu 24.04 安装依赖可运行以下命令。Ubuntu 22.04 将 `libtesseract5` 改为 `libtesseract4`。
+Ubuntu 24.04 可运行以下命令，Ubuntu 22.04 将 `libtesseract5` 改为 `libtesseract4`。
 
 ```bash
 sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-dbusmenu-glib-0.4 libtesseract5
 ```
-
 </details>
 
 ## 第一次划词
 
-在浏览器或 PDF 阅读器中选中 `a piece of cake`，点击浮窗里的 **翻译选中文字**，即可用内置词库查看“小菜一碟”的含义。
+试着在浏览器中划选 **a piece of cake**，点击浮窗里的翻译按钮，离线词库就能解释“小菜一碟”。浮窗出现后约有 1.5 秒可以移入鼠标，停在浮窗内可滚动、复制，移出约半秒后收起。Windows 版可直接拖动浮窗的上边缘或下边缘调整高度，松手后会记住。
 
-浮窗出现后有约 1.5 秒可将鼠标移入。鼠标停在框内时可以阅读、滚动或复制，移出约半秒后浮窗自动收起。
-
-## 选择翻译来源
-
-打开 **取词与 AI 设置**。要翻译整句，勾选 **启用联网翻译**，选择来源并保存。要解释俚语、双关或语气，勾选 **启用 AI**。两个开关同时打开时优先使用 AI。
-
-| 来源 | 需要填写 | 用途与限制 |
+| 操作 | Linux X11 | Windows |
 | --- | --- | --- |
-| 离线词库 | 无，关闭联网和 AI | 查英语单词和已收录的短语 |
-| 有道智云 | App Key、App Secret | 自动识别原文并译为简体中文，应用需绑定文本翻译服务 |
-| DeepL | DeepL API Key | 自动识别原文，接口类型通常选“自动” |
-| 谷歌翻译 | 无需 Key | 自动识别原文，网页通道可能限流或要求验证 |
-| MyMemory | 手动选择原文语言，无需 Key | 适合短文本，每次最多 480 个 UTF-8 字节 |
-| AI 语境解释 | 接口地址、模型名称、API Key | 使用兼容 Chat Completions 的服务，按所选文字给出译文和用法解释 |
+| 读不到当前选区 | 按 `Ctrl+Alt+E`，或复制后按 `Ctrl+Alt+C` | 复制后按 `Ctrl+Alt+C`，也可在主窗口读取剪贴板或粘贴原文 |
+| 暂停自动划词 | 按 `Ctrl+Alt+Y` | 主窗口点击「暂停划词翻译」 |
+| 图片上的英文 | 设置中启用鼠标悬停取词，在本机做 OCR | 支持应用提供的文本选区，暂未提供屏幕 OCR |
+| 托盘菜单 | 由支持 AppIndicator / StatusNotifierItem 的桌面面板显示 | 左键或右键点击通知区域图标均可打开菜单 |
 
-划选模式只在本机预览原文。启用在线服务后，点击翻译才会发送选区文字。密钥以明文保存在本机配置文件中，默认路径为 `~/.config/hoverling/settings.json`，文件权限为 `600`。
+托盘可用时，点主窗口的 × 可收起程序，划词继续运行。从托盘菜单可打开主界面、进入设置或退出。
 
-## 快捷键
+## 翻译来源
 
-| 操作 | 快捷键 |
-| --- | --- |
-| 读取当前划选（浮窗未出现时） | `Ctrl + Alt + E` |
-| 预览已复制的文字 | 先复制，再按 `Ctrl + Alt + C` |
-| 暂停或恢复自动取词 | `Ctrl + Alt + Y` |
+Linux 在「取词与 AI 设置」启用联网翻译或 AI；两者同时开启时优先使用 AI。Windows 在「取词与 AI 设置」选择翻译服务。
 
-遇到图片或无法选中文字的界面，可在设置中尝试 **鼠标停留即翻译**。该模式会截取鼠标附近的画面，在本机识别英文；部分窗口可能定位不准。
+| 来源 | 需要填写 | 用途 |
+| --- | --- | --- |
+| 离线词库 | 无 | 英语单词和已收录的短语 |
+| 有道智云 | App Key、App Secret | 自动识别原文，应用需绑定文本翻译服务 |
+| DeepL | DeepL API Key | 自动识别原文，支持 Free 和 Pro |
+| 谷歌网页翻译 | 无需 Key | 自动识别原文，网页通道可能限流 |
+| MyMemory | 原文语言 | 短文本，每次最多 480 个 UTF-8 字节 |
+| AI 语境解释 | 接口地址、模型名称、API Key | 兼容 Chat Completions 的服务，可解释俚语、双关和语气 |
 
-词库与 OCR 模型的来源及授权见[第三方数据说明](THIRD_PARTY.md)。
+划选预览在本机完成，点击翻译才会向所选联网服务发送选区文字。Linux 的密钥保存在 `~/.config/hoverling/settings.json`，文件权限为 `600`。Windows 使用 `%LOCALAPPDATA%\HoverLing\settings.json`，API Key 和有道应用密钥由当前 Windows 用户的 DPAPI 加密。
+
+从源码运行和打包请看仓库里的 `tools/README.md`。词库、OCR 模型和 Windows 运行库的授权见[第三方说明](THIRD_PARTY.md)。

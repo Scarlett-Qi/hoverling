@@ -9,7 +9,13 @@ if not data.is_absolute():
     raise SystemExit('XDG_DATA_HOME 应为绝对路径，请检查后重试。')
 target = data / 'hoverling'
 if source != target.resolve():
-    shutil.copytree(source, target, dirs_exist_ok=True, ignore=shutil.ignore_patterns('.git', '__pycache__', '*.pyc'))
+    target.mkdir(parents=True, exist_ok=True)
+    for name in ('launch.sh', 'install.sh', 'uninstall.sh', 'icon.svg', 'dictionary.sqlite3',
+                 'phrases.json', 'ECDICT-LICENSE', 'README.md', 'THIRD_PARTY.md'):
+        shutil.copy2(source / name, target / name)
+    for name in ('hoverling', 'tessdata', 'tests'):
+        shutil.copytree(source / name, target / name, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns('windows', '__pycache__', '*.pyc'))
 launcher = target / 'launch.sh'
 launcher.chmod(0o755)
 applications = data / 'applications'

@@ -1,3 +1,4 @@
+import os
 import io
 import tempfile
 import unittest
@@ -107,7 +108,8 @@ class YoudaoTests(unittest.TestCase):
             loaded = Settings(path)
             self.assertEqual(loaded.values["network_provider"], "youdao")
             self.assertEqual(loaded.values["youdao_app_secret"], "secret123")
-            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            if os.name == "posix":
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
 
 
 if __name__ == "__main__":
