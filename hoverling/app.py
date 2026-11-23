@@ -21,6 +21,7 @@ from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, Pango
 from . import theme
 from .core import OCR, ROOT, Target, explicit_target, target_at
 from .formatting import render_markdown
+from .profiles import AIProfiles
 from .translate import MYMEMORY_LANGUAGES, Settings, TranslationError, Translator, api_url, translate_youdao, translate_deepl
 
 CSS = f"""
@@ -155,18 +156,13 @@ class App:
         read_clipboard.connect("clicked", self.read_clipboard)
         selection_row.pack_start(read_clipboard, True, True, 0)
         card.pack_start(selection_row, False, False, 0)
-        row = Gtk.Box(spacing=8)
         settings = Gtk.Button(label="取词与 AI 设置")
         settings.connect("clicked", self.show_settings)
-        row.pack_start(settings, True, True, 0)
-        minimize = Gtk.Button(label="最小化")
-        minimize.connect("clicked", lambda *_: self.window.iconify())
-        row.pack_start(minimize, False, False, 0)
-        box.pack_start(row, False, False, 0)
-        box.pack_start(label("也可以手动输入或粘贴文字（日语、英语等）", "subtitle"), False, False, 0)
+        box.pack_start(settings, False, False, 0)
+        box.pack_start(label("也可以手动输入或粘贴文字（英语、日语等）", "subtitle"), False, False, 0)
         row = Gtk.Box(spacing=8)
         self.entry = Gtk.Entry()
-        self.entry.set_placeholder_text("例如：いらっしゃいませ / It's a piece of cake.")
+        self.entry.set_placeholder_text("例如：It's a piece of cake. / いらっしゃいませ")
         self.entry.set_max_length(5000)
         self.entry.connect("activate", self.manual)
         row.pack_start(self.entry, True, True, 0)
@@ -673,9 +669,13 @@ class App:
         was_enabled = self.enabled
         self.set_enabled(False)
         dialog = Gtk.Dialog(title="取词与 AI 设置", transient_for=self.window, modal=True)
-        dialog.set_default_size(500, 520)
+        dialog.set_default_size(520, 620)
         dialog.add_buttons("取消", Gtk.ResponseType.CANCEL, "保存", Gtk.ResponseType.OK)
-        box = dialog.get_content_area()
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        dialog.get_content_area().pack_start(scroll, True, True, 0)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        scroll.add(box)
         box.set_border_width(18)
         box.set_spacing(10)
         values = self.settings.values
@@ -841,15 +841,66 @@ class App:
         ai_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         box.pack_start(ai_box, False, False, 0)
         ai_box.pack_start(label("AI 自动识别原文语言，用简体中文翻译并解释表达；实际语种能力取决于所用模型。这里填写对话 AI 的接口、模型和 API Key。Key 保存在本机配置文件（权限 600）。", "note"), False, False, 0)
+        profiles = AIProfiles(values)
+        row = Gtk.Box(spacing=6)
+        ai_box.pack_start(row, False, False, 0)
+        row.pack_start(label("AI 配置"), False, False, 0)
+        choice = Gtk.ComboBoxText()
+        row.pack_start(choice, True, True, 0)
+        add = Gtk.Button(label="新增")
+        remove = Gtk.Button(label="移除")
+        row.pack_start(add, False, False, 0)
+        row.pack_start(remove, False, False, 0)
         fields = {}
-        for key, title in (("api_base", "接口地址（支持 Chat Completions 协议）"), ("model", "模型名称"), ("api_key", "API Key（由服务商提供，调用可能收费）")):
+        for key, title in (("name", "配置名称"), ("api_base", "接口地址（支持 Chat Completions 协议）"), ("model", "模型名称"), ("api_key", "API Key（由服务商提供，调用可能收费）")):
             ai_box.pack_start(label(title, "subtitle"), False, False, 0)
-            entry = Gtk.Entry(text=values[key])
+            entry = Gtk.Entry(text=profiles.current[key])
             if key == "api_key":
                 entry.set_visibility(False)
                 entry.set_input_purpose(Gtk.InputPurpose.PASSWORD)
             fields[key] = entry
             ai_box.pack_start(entry, False, False, 0)
+
+        def store_profile():
+            profiles.current.update({key: entry.get_text().strip() for key, entry in fields.items()})
+
+        def refresh_profiles():
+            with choice.handler_block(switch_handler):
+                choice.remove_all()
+                for title in profiles.labels():
+                    choice.append_text(title)
+                choice.set_active(profiles.index)
+            for key, entry in fields.items():
+                entry.set_text(profiles.current[key])
+            remove.set_sensitive(len(profiles.items) > 1)
+
+        def switch_profile(combo):
+            index = combo.get_active()
+            if index >= 0 and index != profiles.index:
+                store_profile()
+                profiles.index = index
+                refresh_profiles()
+
+        def add_profile(_):
+            store_profile()
+            profiles.add()
+            refresh_profiles()
+            fields["name"].grab_focus()
+            fields["name"].select_region(0, -1)
+
+        def remove_profile(_):
+            profiles.remove()
+            refresh_profiles()
+
+        def rename_profile(entry):
+            profiles.current["name"] = entry.get_text().strip()
+            choice.get_model()[profiles.index][0] = profiles.labels()[profiles.index]
+
+        switch_handler = choice.connect("changed", switch_profile)
+        fields["name"].connect("changed", rename_profile)
+        add.connect("clicked", add_profile)
+        remove.connect("clicked", remove_profile)
+        refresh_profiles()
         ai_box.show_all()
         ai_box.set_no_show_all(True)
         ai_box.set_visible(ai.get_active())
@@ -858,7 +909,8 @@ class App:
         box.pack_start(error, False, False, 0)
         dialog.show_all()
         while dialog.run() == Gtk.ResponseType.OK:
-            updated = {name: entry.get_text().strip() for name, entry in fields.items()}
+            store_profile()
+            updated = profiles.settings()
             updated.update({name: entry.get_text().strip() for name, entry in youdao_fields.items()})
             updated.update(deepl_api_key=deepl_key.get_text().strip(), deepl_server=deepl_server.get_active_id())
             updated["google_cloud_key"] = cloud_key.get_text().strip()

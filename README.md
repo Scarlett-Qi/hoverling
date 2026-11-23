@@ -38,7 +38,7 @@ sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-dbusmenu-glib-0.4 libtesseract
 
 ## 翻译来源
 
-Linux 在「取词与 AI 设置」启用联网翻译或 AI；两者同时开启时优先使用 AI。Windows 在「取词与 AI 设置」选择翻译服务。
+在「取词与 AI 设置」中可分别启用 AI 和联网翻译。两项同时开启时优先使用 AI，都关闭时使用离线词库。
 
 | 来源 | 需要填写 | 用途 |
 | --- | --- | --- |
@@ -48,6 +48,8 @@ Linux 在「取词与 AI 设置」启用联网翻译或 AI；两者同时开启�
 | Google Cloud 翻译 | 已启用 Cloud Translation API 的项目密钥 | Basic v2 官方文本翻译，用量计入该项目 |
 | MyMemory | 原文语言 | 短文本，每次最多 480 个 UTF-8 字节 |
 | AI 语境解释 | 接口地址、模型名称、API Key | 兼容 Chat Completions 的服务，可解释俚语、双关和语气 |
+
+在 AI 设置里点击「新增」，给每套配置起名并填写各自的接口地址、模型和 API Key。以后从「AI 配置」下拉框选择一套，点击「保存」即可切换。升级时，旧版 AI 设置会保留为「默认配置」。
 
 划选预览在本机完成，点击翻译才会向所选联网服务发送选区文字。Linux 的密钥保存在 `~/.config/hoverling/settings.json`，文件权限为 `600`。Windows 使用 `%LOCALAPPDATA%\HoverLing\settings.json`，API Key 和有道应用密钥由当前 Windows 用户的 DPAPI 加密。
 

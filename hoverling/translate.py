@@ -21,6 +21,7 @@ from contextlib import closing
 from pathlib import Path
 
 from .core import ROOT, Target, clip_utf8
+from .profiles import AI_FIELDS, AIProfiles
 
 MYMEMORY_LANGUAGES = {
     "en": "英语", "ja": "日语", "ko": "韩语", "fr": "法语", "de": "德语",
@@ -32,6 +33,7 @@ MYMEMORY_LANGUAGES = {
 DEFAULTS = {
     "delay": 950, "trigger": "selection", "ai_enabled": False,
     "api_base": "https://api.deepseek.com", "model": "deepseek-chat", "api_key": "",
+    "ai_profiles": None, "active_ai_profile": 0,
     "network_enabled": False, "network_provider": "google_cloud",
     "google_cloud_key": "",
     "youdao_app_key": "", "youdao_app_secret": "",
@@ -74,13 +76,24 @@ class Settings:
         if self.values["mymemory_source"] not in tuple(MYMEMORY_LANGUAGES):
             self.values["mymemory_source"] = DEFAULTS["mymemory_source"]
 
+        self.values.update(AIProfiles(self.values).settings())
+
+    def disk_values(self, updated):
+        # Profiles own the credentials. The flat fields are only a runtime view.
+        return {key: value for key, value in updated.items() if key not in AI_FIELDS}
+
     def save(self, values: dict):
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         updated = {**self.values, **{k: v for k, v in values.items() if k in DEFAULTS}}
+        profiles = AIProfiles(updated)
+        if "ai_profiles" not in values:
+            profiles.current.update({key: values[key] for key in AI_FIELDS if key in values})
+        updated.update(profiles.settings())
+        stored = self.disk_values(updated)
         fd, name = tempfile.mkstemp(prefix=".settings-", dir=self.path.parent)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                json.dump(updated, stream, ensure_ascii=False, indent=2)
+                json.dump(stored, stream, ensure_ascii=False, indent=2)
             os.replace(name, self.path)
         finally:
             if os.path.exists(name):

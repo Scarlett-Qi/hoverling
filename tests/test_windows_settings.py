@@ -21,3 +21,26 @@ class WindowsSettingsTests(unittest.TestCase):
             for key, value in secrets.items():
                 self.assertNotIn(value, contents)
                 self.assertEqual(reloaded.values[key], value)
+
+    def test_migrates_old_dpapi_key_and_protects_inactive_profiles(self):
+        import json
+        from hoverling.profiles import AIProfiles
+        from hoverling.windows.secrets import WindowsSettings, encode_key
+
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "settings.json"
+            path.write_text(json.dumps({"api_key": encode_key("first-private")}), encoding="utf-8")
+            settings = WindowsSettings(path)
+            draft = AIProfiles(settings.values)
+            self.assertEqual(draft.current["api_key"], "first-private")
+            draft.add()
+            draft.current["api_key"] = "second-private"
+            settings.save(draft.settings())
+            settings.save({"trigger": "alt"})
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertNotIn("api_key", data)
+            for profile in data["ai_profiles"]:
+                self.assertTrue(profile["api_key"].startswith("dpapi:"))
+            loaded = WindowsSettings(path).values
+            self.assertEqual(loaded["api_key"], "second-private")
+            self.assertEqual([p["api_key"] for p in loaded["ai_profiles"]], ["first-private", "second-private"])
