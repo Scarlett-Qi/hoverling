@@ -1,15 +1,15 @@
 import os
 import io
-import urllib.error
+import json
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
 from hoverling.core import Target, Word, clip_utf8, local_target, parse_tsv, target_at
-from hoverling.translate import DEFAULTS, Settings, TranslationError, Translator, api_url, request_json
+from hoverling.translate import DEFAULTS, NoRedirect, Settings, TranslationError, Translator, api_url, request_json
 
-GOOGLE = {**DEFAULTS, "network_enabled": True, "network_provider": "google_web"}
+GOOGLE = {**DEFAULTS, "network_enabled": True, "network_provider": "google_cloud", "google_cloud_key": "test-key"}
 
 
 class RecognitionTests(unittest.TestCase):
@@ -76,34 +76,39 @@ class TranslationTests(unittest.TestCase):
             with self.assertRaises(TranslationError):
                 Translator().translate(Target("test", "test", "test sentence"), {**DEFAULTS, "network_enabled": True, "network_provider": "mymemory"}, sentence=True)
 
-    def test_google_combines_sentence_segments(self):
-        response = [[["第一句。", "First."], ["第二句。", "Second."]], None, "en"]
+    def test_google_translates_whole_sentence_context(self):
+        response = {"data": {"translations": [{"translatedText": "第一句。第二句。"}]}}
         target = Target("First", "First", "First. Second.")
         with patch("hoverling.translate.request_json", return_value=response) as request:
             text, source = Translator().translate(target, GOOGLE, sentence=True)
             self.assertEqual(text, "第一句。第二句。")
-            self.assertIn("谷歌翻译", source)
-            self.assertIn("q=First.+Second.", request.call_args.args[0])
-            self.assertTrue(request.call_args.kwargs["allow_array"])
+            self.assertIn("Google Cloud", source)
+            self.assertEqual(request.call_args.args[1]["q"], target.context)
 
     def test_google_translates_even_when_word_is_in_local_dictionary(self):
-        response = [[["银行", "bank"]]]
+        response = {"data": {"translations": [{"translatedText": "银行"}]}}
         with patch("hoverling.translate.request_json", return_value=response) as request:
             text, source = Translator().translate(Target("bank", "bank", "river bank"), GOOGLE)
             self.assertEqual(text, "银行")
             self.assertEqual(request.call_count, 1)
-            self.assertIn("谷歌翻译", source)
+            self.assertIn("Google Cloud", source)
 
-    def test_google_failure_shows_offline_definition(self):
-        with patch("hoverling.translate.request_json", side_effect=TranslationError("网络不通")):
-            text, source = Translator().translate(Target("bank", "bank", "bank"), GOOGLE)
-            self.assertIn("银行", text)
-            self.assertIn("离线释义", source)
+    def test_old_web_setting_uses_official_api_and_existing_key(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "settings.json"
+            path.write_text(json.dumps({**GOOGLE, "network_provider": "google_web"}))
+            settings = Settings(path)
+            self.assertEqual(settings.values["network_provider"], "google_cloud")
+            with patch("hoverling.translate.translate_google_cloud", return_value="银行") as cloud:
+                Translator().translate(Target("bank", "bank", "bank"), settings.values)
+                cloud.assert_called_once_with("bank", "test-key")
 
-    def test_google_invalid_response_still_shows_local_phrase(self):
-        target = Target("piece", "a piece of cake", "a piece of cake", "小菜一碟", True)
-        with patch("hoverling.translate.request_json", return_value=[[]]):
-            self.assertEqual(Translator().translate(target, GOOGLE)[0], "小菜一碟")
+    def test_old_web_setting_without_key_prompts_before_request(self):
+        settings = {**GOOGLE, "network_provider": "google_web", "google_cloud_key": ""}
+        with patch("hoverling.translate.request_json") as request:
+            with self.assertRaisesRegex(TranslationError, "Google Cloud Translation API Key"):
+                Translator().translate(Target("bank", "bank", "bank"), settings)
+            request.assert_not_called()
 
     def test_google_sentence_outage_does_not_invent_sentence_translation(self):
         with patch("hoverling.translate.request_json", side_effect=TranslationError("网络不通")):
@@ -113,28 +118,20 @@ class TranslationTests(unittest.TestCase):
     def test_provider_switch_does_not_reuse_wrong_cache(self):
         translator = Translator()
         target = Target("bank", "bank", "bank")
-        with patch("hoverling.translate.request_json", return_value=[[["谷歌结果", "bank"]]]):
+        with patch("hoverling.translate.request_json", return_value={"data": {"translations": [{"translatedText": "谷歌结果"}]}}):
             self.assertEqual(translator.translate(target, GOOGLE)[0], "谷歌结果")
         with patch("hoverling.translate.request_json", return_value={"responseData": {"translatedText": "另一服务结果"}}) as request:
             self.assertEqual(translator.translate(target, {**GOOGLE, "network_provider": "mymemory"})[0], "另一服务结果")
             self.assertEqual(request.call_count, 1)
 
-    def test_json_arrays_are_accepted_only_for_google_style_response(self):
+    def test_json_arrays_are_rejected(self):
         with patch("urllib.request.build_opener") as opener:
             opener.return_value.open.return_value = io.BytesIO(b'[[["hello"]]]')
             with self.assertRaises(TranslationError):
                 request_json("https://example.com")
-            opener.return_value.open.return_value = io.BytesIO(b'[[["hello"]]]')
-            self.assertEqual(request_json("https://example.com", allow_array=True), [[["hello"]]])
 
-    def test_google_verification_redirect_is_reported_without_following(self):
-        error = urllib.error.HTTPError("https://translate.googleapis.com/translate_a/single", 302, "Found",
-                                       {"Location": "https://www.google.com/sorry/index"}, None)
-        with patch("urllib.request.build_opener") as opener:
-            opener.return_value.open.side_effect = error
-            with self.assertRaisesRegex(TranslationError, "谷歌当前要求网页验证"):
-                request_json("https://translate.googleapis.com/translate_a/single", allow_array=True)
-            self.assertEqual(opener.return_value.open.call_count, 1)
+    def test_api_redirect_is_not_followed(self):
+        self.assertIsNone(NoRedirect().redirect_request(None, None, 302, "Found", {}, "https://example.com"))
 
     def test_ai_receives_context_and_caches_only_this_context(self):
         settings = {**DEFAULTS, "ai_enabled": True, "api_key": "test-key"}

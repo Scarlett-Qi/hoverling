@@ -4,8 +4,9 @@ from ..theme import CONTROL_RADIUS
 from ..translate import MYMEMORY_LANGUAGES, api_url, TranslationError
 
 MODES = {"offline": "离线英汉词典", "youdao": "有道智云", "deepl": "DeepL",
-         "google_web": "谷歌网页翻译", "mymemory": "MyMemory", "ai": "AI 语境解释"}
+         "google_cloud": "Google Cloud 翻译", "mymemory": "MyMemory", "ai": "AI 语境解释"}
 FIELDS = {"youdao": [("youdao_app_key", "应用 ID"), ("youdao_app_secret", "应用密钥")],
+          "google_cloud": [("google_cloud_key", "Cloud Translation API Key")],
           "deepl": [("deepl_api_key", "API Key")],
           "ai": [("api_base", "接口地址（Base URL）"), ("model", "模型名称"), ("api_key", "API Key")]}
 
@@ -48,7 +49,7 @@ class SettingsDialog(wx.Dialog):
         typeface(self.mode, 11)
         self.mode.SetSelection(list(MODES).index(current_mode(vals)))
         layout.Add(self.mode, 0, wx.EXPAND)
-        for mode in ("youdao", "deepl", "ai", "mymemory"):
+        for mode in ("youdao", "deepl", "google_cloud", "ai", "mymemory"):
             panel = wx.Panel(self)
             panel.SetBackgroundColour(CANVAS)
             box = wx.BoxSizer(wx.VERTICAL)
@@ -56,7 +57,7 @@ class SettingsDialog(wx.Dialog):
                 box.AddSpacer(d(10))
                 box.Add(label(panel, field_name))
                 box.AddSpacer(d(4))
-                secret = key in ("api_key", "youdao_app_secret", "deepl_api_key")
+                secret = key in ("api_key", "youdao_app_secret", "deepl_api_key", "google_cloud_key")
                 field_box = Surface(panel, radius=CONTROL_RADIUS)
                 control = wx.TextCtrl(field_box, value=vals[key], name=field_name,
                                       style=wx.BORDER_NONE | (wx.TE_PASSWORD if secret else 0))

@@ -45,7 +45,7 @@ Linux 在「取词与 AI 设置」启用联网翻译或 AI；两者同时开启�
 | 离线词库 | 无 | 英语单词和已收录的短语 |
 | 有道智云 | App Key、App Secret | 自动识别原文，应用需绑定文本翻译服务 |
 | DeepL | DeepL API Key | 自动识别原文，支持 Free 和 Pro |
-| 谷歌网页翻译 | 无需 Key | 自动识别原文，网页通道可能限流 |
+| Google Cloud 翻译 | 已启用 Cloud Translation API 的项目密钥 | Basic v2 官方文本翻译，用量计入该项目 |
 | MyMemory | 原文语言 | 短文本，每次最多 480 个 UTF-8 字节 |
 | AI 语境解释 | 接口地址、模型名称、API Key | 兼容 Chat Completions 的服务，可解释俚语、双关和语气 |
 

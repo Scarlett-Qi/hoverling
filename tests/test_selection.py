@@ -1,6 +1,5 @@
 import json
 import unittest
-import urllib.parse
 from unittest.mock import patch
 
 from hoverling.core import Target, explicit_target
@@ -50,10 +49,11 @@ class ExplicitSelectionTests(unittest.TestCase):
 
     def test_google_uses_exact_selection_even_if_context_action_is_requested(self):
         target = Target("only this", "only this", "NEVER_SEND_SCREEN_CONTEXT", explicit=True)
-        with patch("hoverling.translate.request_json", return_value=[[["只翻译这些", "only this"]]]) as request:
-            Translator().translate(target, {**DEFAULTS, "network_enabled": True}, sentence=True)
-            query = urllib.parse.parse_qs(urllib.parse.urlparse(request.call_args.args[0]).query)
-            self.assertEqual(query["q"], ["only this"])
+        response = {"data": {"translations": [{"translatedText": "只翻译这些"}]}}
+        with patch("hoverling.translate.request_json", return_value=response) as request:
+            Translator().translate(target, {**DEFAULTS, "network_enabled": True, "google_cloud_key": "test-key"}, sentence=True)
+            self.assertEqual(request.call_args.args[1]["q"], "only this")
+            self.assertNotIn("NEVER_SEND_SCREEN_CONTEXT", repr(request.call_args))
 
     def test_ai_payload_contains_only_the_user_selected_range(self):
         target = Target("run", "run", "NEVER_SEND_SCREEN_CONTEXT", explicit=True)

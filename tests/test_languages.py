@@ -16,10 +16,10 @@ class MultilingualTests(unittest.TestCase):
     def test_automatic_providers_keep_non_english_selection_and_chinese_target(self):
         settings = {**DEFAULTS, "network_enabled": True,
                     "youdao_app_key": "test-key", "youdao_app_secret": "test-secret",
-                    "deepl_api_key": "test-key"}
+                    "google_cloud_key": "test-key", "deepl_api_key": "test-key"}
         responses = {
             "youdao": {"errorCode": "0", "translation": ["模拟译文"]},
-            "google_web": [[["模拟译文", "original"]]],
+            "google_cloud": {"data": {"translations": [{"translatedText": "模拟译文"}]}},
             "deepl": {"translations": [{"text": "模拟译文"}]},
         }
         for text in ("いらっしゃいませ", "안녕하세요", "Bonjour !", "Привет!", "日本語 and English"):
@@ -29,11 +29,11 @@ class MultilingualTests(unittest.TestCase):
                     result, _ = Translator().translate(self.target(text), {**settings, "network_provider": provider}, sentence=True)
                     self.assertEqual(result, "模拟译文")
                     self.assertNotIn("NEVER_SEND_SURROUNDINGS", repr(request.call_args))
-                    if provider == "google_web":
-                        payload = urllib.parse.parse_qs(urllib.parse.urlparse(request.call_args.args[0]).query)
-                        self.assertEqual(payload["q"], [text])
-                        self.assertEqual(payload["sl"], ["auto"])
-                        self.assertEqual(payload["tl"], ["zh-CN"])
+                    if provider == "google_cloud":
+                        payload = request.call_args.args[1]
+                        self.assertEqual(payload["q"], text)
+                        self.assertNotIn("source", payload)
+                        self.assertEqual(payload["target"], "zh-CN")
                     elif provider == "youdao":
                         payload = request.call_args.args[1]
                         self.assertEqual(payload["q"], text)

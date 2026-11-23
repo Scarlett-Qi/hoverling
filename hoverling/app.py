@@ -700,7 +700,7 @@ class App:
         provider = Gtk.ComboBoxText()
         provider.append("deepl", "DeepL · 官方文本翻译（独立 API Key）")
         provider.append("youdao", "有道智云 · 官方文本翻译（App Key / Secret）")
-        provider.append("google_web", "谷歌翻译 · 网页通道，无需 API Key")
+        provider.append("google_cloud", "Google Cloud 翻译 · 官方文本翻译")
         provider.append("mymemory", "MyMemory · 免费基础接口")
         provider.set_active_id(preferred_provider or values["network_provider"])
         box.pack_start(provider, False, False, 0)
@@ -813,15 +813,26 @@ class App:
         deepl_box.show_all()
         deepl_box.set_no_show_all(True)
 
+        cloud_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        box.pack_start(cloud_box, False, False, 0)
+        cloud_box.pack_start(label("Cloud Translation API Key", "subtitle"), False, False, 0)
+        cloud_key = Gtk.Entry(text=values["google_cloud_key"])
+        cloud_key.set_visibility(False)
+        cloud_key.set_input_purpose(Gtk.InputPurpose.PASSWORD)
+        cloud_box.pack_start(cloud_key, False, False, 0)
+        cloud_box.show_all()
+        cloud_box.set_no_show_all(True)
+
         def update_provider(*_):
             selected = provider.get_active_id()
+            cloud_box.set_visible(selected == "google_cloud")
             youdao_box.set_visible(selected == "youdao")
             deepl_box.set_visible(selected == "deepl")
             mymemory_box.set_visible(selected == "mymemory")
             notes = {
                 "deepl": "DeepL 自动识别所选文字的语言并译为简体中文。不附加选区外上下文。使用 DeepL 时请关闭“启用 AI”；否则仍优先使用 AI。",
                 "youdao": "有道自动识别原文并译为简体中文。划选模式只发送所选内容，不附带附近文字。需要绑定文本翻译服务并有可用额度；AI 开启时优先使用 AI。",
-                "google_web": "谷歌自动识别原文并译为简体中文。网页通道可能限流或变化；失败时会尝试离线词典。AI 开启时优先使用 AI。",
+                "google_cloud": "Google Cloud 自动识别原文并译为简体中文，用量计入密钥所属项目。AI 开启时优先使用 AI。",
                 "mymemory": "MyMemory 需要手动选择原文语言，再译为简体中文。所查文字会发送给 MyMemory，受服务额度和网络可达性限制。AI 开启时优先使用 AI。",
             }
             service_note.set_text(notes.get(selected, ""))
@@ -850,9 +861,12 @@ class App:
             updated = {name: entry.get_text().strip() for name, entry in fields.items()}
             updated.update({name: entry.get_text().strip() for name, entry in youdao_fields.items()})
             updated.update(deepl_api_key=deepl_key.get_text().strip(), deepl_server=deepl_server.get_active_id())
+            updated["google_cloud_key"] = cloud_key.get_text().strip()
             updated.update(mymemory_source=mymemory_source.get_active_id())
             updated.update(delay=delay.get_value_as_int(), trigger=trigger.get_active_id(), ai_enabled=ai.get_active(), network_enabled=network.get_active(), network_provider=provider.get_active_id())
             try:
+                if updated["network_enabled"] and updated["network_provider"] == "google_cloud" and not updated["ai_enabled"] and not updated["google_cloud_key"]:
+                    raise TranslationError("请填写 Google Cloud Translation API Key。")
                 if updated["network_enabled"] and updated["network_provider"] == "deepl" and not updated["ai_enabled"] and not updated["deepl_api_key"]:
                     raise TranslationError("使用 DeepL 翻译需要填写 DeepL API Key。")
                 if updated["network_enabled"] and updated["network_provider"] == "youdao" and not updated["ai_enabled"]:

@@ -32,11 +32,18 @@ MYMEMORY_LANGUAGES = {
 DEFAULTS = {
     "delay": 950, "trigger": "selection", "ai_enabled": False,
     "api_base": "https://api.deepseek.com", "model": "deepseek-chat", "api_key": "",
-    "network_enabled": False, "network_provider": "google_web",
+    "network_enabled": False, "network_provider": "google_cloud",
+    "google_cloud_key": "",
     "youdao_app_key": "", "youdao_app_secret": "",
     "deepl_api_key": "", "deepl_server": "auto",
     "mymemory_source": "en",
 }
+
+
+def normalize_provider(value) -> str:
+    if value in ("google_cloud", "mymemory", "youdao", "deepl"):
+        return value
+    return DEFAULTS["network_provider"]
 
 
 class Settings:
@@ -54,15 +61,14 @@ class Settings:
             self.values["delay"] = max(450, min(2500, int(self.values["delay"])))
         except (TypeError, ValueError):
             self.values["delay"] = DEFAULTS["delay"]
-        for name in ("api_base", "model", "api_key", "youdao_app_key", "youdao_app_secret", "deepl_api_key"):
+        for name in ("api_base", "model", "api_key", "youdao_app_key", "youdao_app_secret", "deepl_api_key", "google_cloud_key"):
             if not isinstance(self.values[name], str):
                 self.values[name] = DEFAULTS[name]
         if self.values["trigger"] not in ("selection", "hover", "alt"):
             self.values["trigger"] = "selection"
         self.values["ai_enabled"] = self.values["ai_enabled"] is True
         self.values["network_enabled"] = self.values["network_enabled"] is True
-        if self.values["network_provider"] not in ("google_web", "mymemory", "youdao", "deepl"):
-            self.values["network_provider"] = "google_web"
+        self.values["network_provider"] = normalize_provider(self.values["network_provider"])
         if self.values["deepl_server"] not in ("auto", "standard", "free"):
             self.values["deepl_server"] = "auto"
         if self.values["mymemory_source"] not in tuple(MYMEMORY_LANGUAGES):
@@ -167,7 +173,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def request_json(url: str, payload: dict | None = None, key: str = "", *, allow_array: bool = False, form: bool = False, timeout: float = 12, auth_scheme: str = "Bearer") -> dict | list:
+def request_json(url: str, payload: dict | None = None, key: str = "", *, form: bool = False, timeout: float = 12, auth_scheme: str = "Bearer") -> dict:
     headers = {"User-Agent": "HoverLing/0.1", "Accept": "application/json"}
     data = None
     if payload is not None:
@@ -177,7 +183,9 @@ def request_json(url: str, payload: dict | None = None, key: str = "", *, allow_
         else:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             headers["Content-Type"] = "application/json"
-    if key:
+    if key and auth_scheme == "x-goog-api-key":
+        headers["x-goog-api-key"] = key
+    elif key:
         if auth_scheme not in ("Bearer", "DeepL-Auth-Key"):
             raise TranslationError("不支持的接口认证方式。")
         headers["Authorization"] = auth_scheme + " " + key
@@ -188,7 +196,7 @@ def request_json(url: str, payload: dict | None = None, key: str = "", *, allow_
             if len(body) > 256 * 1024:
                 raise TranslationError("服务返回内容过长。")
             result = json.loads(body)
-            if not isinstance(result, dict) and not (allow_array and isinstance(result, list)):
+            if not isinstance(result, dict):
                 raise TranslationError("翻译服务返回了无法识别的数据。")
             return result
     except urllib.error.HTTPError as exc:
@@ -200,9 +208,6 @@ def request_json(url: str, payload: dict | None = None, key: str = "", *, allow_
                        456: "字符额度或账户用量上限已达到"}
             if exc.code in reasons:
                 raise TranslationError(f"DeepL：{reasons[exc.code]}（HTTP {exc.code}）。") from None
-        location = urllib.parse.urlparse(exc.headers.get("Location", "") if exc.headers else "")
-        if exc.code in (301, 302, 303, 307, 308) and location.hostname in ("www.google.com", "translate.google.com") and location.path.startswith("/sorry"):
-            raise TranslationError("谷歌当前要求网页验证或限制了自动翻译请求，请稍后重试。") from None
         reason = {401: "API Key 无效或已失效", 402: "账户余额不足", 403: "接口拒绝访问",
                   429: "请求过多或额度已用完", 404: "接口地址或模型名称不正确"}.get(exc.code, "服务暂时不可用")
         raise TranslationError(f"{reason}（HTTP {exc.code}）。") from None
@@ -255,6 +260,24 @@ def parse_youdao(result: dict) -> str:
 def translate_youdao(query: str, app_key: str, app_secret: str) -> str:
     payload = youdao_params(query, app_key, app_secret)
     return parse_youdao(request_json("https://openapi.youdao.com/api", payload, form=True))
+
+
+def translate_google_cloud(query: str, key: str) -> str:
+    if not key.strip():
+        raise TranslationError("请在设置中填写 Google Cloud Translation API Key。")
+    payload = {"q": query, "target": "zh-CN", "format": "text", "model": "nmt"}
+    result = request_json("https://translation.googleapis.com/language/translate/v2",
+                          payload, key.strip(), auth_scheme="x-goog-api-key")
+    try:
+        translations = result["data"]["translations"]
+        if not isinstance(translations, list) or len(translations) != 1:
+            raise ValueError()
+        text = translations[0]["translatedText"]
+        if not isinstance(text, str) or not text.strip():
+            raise ValueError()
+    except (KeyError, TypeError, ValueError):
+        raise TranslationError("Google Cloud 未返回有效译文。") from None
+    return html.unescape(text).strip()
 
 
 def deepl_endpoint(key: str, server: str = "auto") -> str:
@@ -322,7 +345,7 @@ class Translator:
         context = target.query if target.explicit else target.context
         ai = settings.get("ai_enabled") and bool(settings.get("api_key", "").strip())
         network = settings.get("network_enabled", False)
-        provider = settings.get("network_provider", "google_web")
+        provider = normalize_provider(settings.get("network_provider"))
         mymemory_source = settings.get("mymemory_source", DEFAULTS["mymemory_source"])
         query = target.query if target.explicit else clip_utf8(context if sentence else target.query)
         if network and not ai and provider == "mymemory" and target.explicit and len(query.encode("utf-8")) > 480:
@@ -337,8 +360,9 @@ class Translator:
         key_id = hashlib.sha256(settings.get("api_key", "").encode()).hexdigest()
         youdao_id = hashlib.sha256(json.dumps([settings.get("youdao_app_key", ""), settings.get("youdao_app_secret", "")]).encode()).hexdigest()
         deepl_id = hashlib.sha256(settings.get("deepl_api_key", "").encode()).hexdigest()
+        cloud_id = hashlib.sha256(settings.get("google_cloud_key", "").encode()).hexdigest() if provider == "google_cloud" else None
         cache_key = (target.query, context if ai or sentence else "", bool(ai), sentence,
-                     settings.get("api_base"), settings.get("model"), key_id, provider, youdao_id, target.explicit, deepl_id, settings.get("deepl_server", "auto"), mymemory_source if provider == "mymemory" and not ai else None)
+                     settings.get("api_base"), settings.get("model"), key_id, provider, cloud_id, youdao_id, target.explicit, deepl_id, settings.get("deepl_server", "auto"), mymemory_source if provider == "mymemory" and not ai else None)
         with self.lock:
             if cache_key in self.cache:
                 self.cache.move_to_end(cache_key)
@@ -378,6 +402,8 @@ class Translator:
             except (KeyError, IndexError, TypeError, ValueError):
                 raise TranslationError("AI 未返回解释，请检查模型是否支持 Chat Completions 接口。") from None
             answer = (text.strip()[:5000], "AI 语境解释 · " + settings["model"])
+        elif provider == "google_cloud":
+            answer = (translate_google_cloud(query, settings.get("google_cloud_key", "")), "Google Cloud · 官方文本翻译")
         elif provider == "deepl":
             key = settings.get("deepl_api_key", "").strip()
             if not key:
@@ -401,29 +427,6 @@ class Translator:
                 local = self.offline(target) if not sentence else None
                 if local:
                     return local[0], "有道调用失败，已使用离线释义 · " + str(exc)
-                raise
-        elif provider == "google_web":
-            url = "https://translate.googleapis.com/translate_a/single?" + urllib.parse.urlencode({
-                "client": "gtx", "sl": "auto", "tl": "zh-CN", "dt": "t", "q": query,
-            })
-            try:
-                result = request_json(url, allow_array=True)
-                try:
-                    segments = result[0]
-                    if not isinstance(segments, list):
-                        raise ValueError()
-                    text = "".join(segment[0] for segment in segments
-                                   if isinstance(segment, list) and segment and isinstance(segment[0], str))
-                    if not text.strip():
-                        raise ValueError()
-                except (KeyError, IndexError, TypeError, ValueError):
-                    raise TranslationError("谷歌网页翻译返回格式已变化或没有译文，请稍后重试。") from None
-                answer = (html.unescape(text).strip(), "谷歌翻译 · 网页通道（无需 Key，可能限流或变化）")
-            except TranslationError as exc:
-                # A temporary outage must not remove a useful local definition.
-                local = self.offline(target) if not sentence else None
-                if local:
-                    return local[0], "谷歌翻译暂不可用，已使用离线释义 · " + str(exc)
                 raise
         else:
             if mymemory_source not in tuple(MYMEMORY_LANGUAGES):
