@@ -46,6 +46,7 @@ sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-dbusmenu-glib-0.4 libtesseract
 | 有道智云 | App Key、App Secret | 自动识别原文，应用需绑定文本翻译服务 |
 | DeepL | DeepL API Key | 自动识别原文，支持 Free 和 Pro |
 | Google Cloud 翻译 | 已启用 Cloud Translation API 的项目密钥 | Basic v2 官方文本翻译，用量计入该项目 |
+| 豆包翻译 · 火山方舟 | 可调用豆包翻译模型的方舟 API Key | 自动识别原文并译为中文，内置模型和接口地址 |
 | MyMemory | 原文语言 | 短文本，每次最多 480 个 UTF-8 字节 |
 | AI 语境解释 | 接口地址、模型名称、API Key | 兼容 Chat Completions 的服务，可解释俚语、双关和语气 |
 

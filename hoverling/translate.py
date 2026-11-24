@@ -35,15 +35,18 @@ DEFAULTS = {
     "api_base": "https://api.deepseek.com", "model": "deepseek-chat", "api_key": "",
     "ai_profiles": None, "active_ai_profile": 0,
     "network_enabled": False, "network_provider": "google_cloud",
-    "google_cloud_key": "",
+    "google_cloud_key": "", "doubao_api_key": "",
     "youdao_app_key": "", "youdao_app_secret": "",
     "deepl_api_key": "", "deepl_server": "auto",
     "mymemory_source": "en",
 }
 
 
+DOUBAO_ENDPOINT = "https://ark.cn-beijing.volces.com/api/v3/responses"
+
+
 def normalize_provider(value) -> str:
-    if value in ("google_cloud", "mymemory", "youdao", "deepl"):
+    if value in ("google_cloud", "doubao", "mymemory", "youdao", "deepl"):
         return value
     return DEFAULTS["network_provider"]
 
@@ -63,7 +66,7 @@ class Settings:
             self.values["delay"] = max(450, min(2500, int(self.values["delay"])))
         except (TypeError, ValueError):
             self.values["delay"] = DEFAULTS["delay"]
-        for name in ("api_base", "model", "api_key", "youdao_app_key", "youdao_app_secret", "deepl_api_key", "google_cloud_key"):
+        for name in ("api_base", "model", "api_key", "youdao_app_key", "youdao_app_secret", "deepl_api_key", "google_cloud_key", "doubao_api_key"):
             if not isinstance(self.values[name], str):
                 self.values[name] = DEFAULTS[name]
         if self.values["trigger"] not in ("selection", "hover", "alt"):
@@ -221,7 +224,22 @@ def request_json(url: str, payload: dict | None = None, key: str = "", *, form: 
                        456: "字符额度或账户用量上限已达到"}
             if exc.code in reasons:
                 raise TranslationError(f"DeepL：{reasons[exc.code]}（HTTP {exc.code}）。") from None
-        reason = {401: "API Key 无效或已失效", 402: "账户余额不足", 403: "接口拒绝访问",
+        if url == DOUBAO_ENDPOINT and exc.code == 400:
+            detail = ""
+            try:
+                with exc:
+                    error = json.loads(exc.read(16384)).get("error")
+                if isinstance(error, dict) and isinstance(error.get("message"), str):
+                    detail = " ".join(error["message"].split())
+                    if key:
+                        detail = detail.replace(key, "[已隐藏]")
+            except (ValueError, AttributeError, OSError):
+                pass
+            message = "豆包翻译请求无效（HTTP 400）"
+            raise TranslationError(message + ("：" + detail[:400] if detail else "。")) from None
+        if url == DOUBAO_ENDPOINT and exc.code in (403, 404):
+            raise TranslationError(f"豆包翻译请求被拒绝或找不到模型，请确认此方舟 API Key 可调用豆包翻译模型（HTTP {exc.code}）。") from None
+        reason = {400: "请求参数无效", 401: "API Key 无效或已失效", 402: "账户余额不足", 403: "接口拒绝访问",
                   429: "请求过多或额度已用完", 404: "接口地址或模型名称不正确"}.get(exc.code, "服务暂时不可用")
         raise TranslationError(f"{reason}（HTTP {exc.code}）。") from None
     except (urllib.error.URLError, TimeoutError, OSError):
@@ -291,6 +309,34 @@ def translate_google_cloud(query: str, key: str) -> str:
     except (KeyError, TypeError, ValueError):
         raise TranslationError("Google Cloud 未返回有效译文。") from None
     return html.unescape(text).strip()
+
+
+def translate_doubao(query: str, key: str) -> str:
+    if not key.strip():
+        raise TranslationError("请在设置中填写火山方舟 API Key。")
+    content = {"type": "input_text", "text": query, "translation_options": {"target_language": "zh"}}
+    payload = {"model": "doubao-seed-translation-250915",
+               "input": [{"role": "user", "content": [content]}]}
+    result = request_json(DOUBAO_ENDPOINT, payload, key.strip(), timeout=45)
+    if result.get("status") != "completed":
+        raise TranslationError("豆包翻译未完成，请稍后重试。")
+    parts = []
+    output = result.get("output")
+    if not isinstance(output, list):
+        raise TranslationError("豆包翻译未返回有效译文。")
+    for item in output:
+        if not isinstance(item, dict) or item.get("type") != "message" or item.get("role") != "assistant":
+            continue
+        content_parts = item.get("content")
+        if not isinstance(content_parts, list):
+            raise TranslationError("豆包翻译未返回有效译文。")
+        for part in content_parts:
+            if isinstance(part, dict) and part.get("type") == "output_text" and isinstance(part.get("text"), str):
+                parts.append(part["text"])
+    text = "".join(parts).strip()
+    if not text:
+        raise TranslationError("豆包翻译未返回有效译文。")
+    return text
 
 
 def deepl_endpoint(key: str, server: str = "auto") -> str:
@@ -373,9 +419,10 @@ class Translator:
         key_id = hashlib.sha256(settings.get("api_key", "").encode()).hexdigest()
         youdao_id = hashlib.sha256(json.dumps([settings.get("youdao_app_key", ""), settings.get("youdao_app_secret", "")]).encode()).hexdigest()
         deepl_id = hashlib.sha256(settings.get("deepl_api_key", "").encode()).hexdigest()
-        cloud_id = hashlib.sha256(settings.get("google_cloud_key", "").encode()).hexdigest() if provider == "google_cloud" else None
+        provider_key = {"google_cloud": "google_cloud_key", "doubao": "doubao_api_key"}.get(provider)
+        provider_key_id = hashlib.sha256(settings.get(provider_key, "").encode()).hexdigest() if provider_key else None
         cache_key = (target.query, context if ai or sentence else "", bool(ai), sentence,
-                     settings.get("api_base"), settings.get("model"), key_id, provider, cloud_id, youdao_id, target.explicit, deepl_id, settings.get("deepl_server", "auto"), mymemory_source if provider == "mymemory" and not ai else None)
+                     settings.get("api_base"), settings.get("model"), key_id, provider, provider_key_id, youdao_id, target.explicit, deepl_id, settings.get("deepl_server", "auto"), mymemory_source if provider == "mymemory" and not ai else None)
         with self.lock:
             if cache_key in self.cache:
                 self.cache.move_to_end(cache_key)
@@ -415,6 +462,8 @@ class Translator:
             except (KeyError, IndexError, TypeError, ValueError):
                 raise TranslationError("AI 未返回解释，请检查模型是否支持 Chat Completions 接口。") from None
             answer = (text.strip()[:5000], "AI 语境解释 · " + settings["model"])
+        elif provider == "doubao":
+            answer = (translate_doubao(query, settings.get("doubao_api_key", "")), "豆包翻译 · 火山方舟")
         elif provider == "google_cloud":
             answer = (translate_google_cloud(query, settings.get("google_cloud_key", "")), "Google Cloud · 官方文本翻译")
         elif provider == "deepl":

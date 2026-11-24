@@ -5,7 +5,7 @@ from ctypes import wintypes as w
 
 from ..translate import Settings
 
-SECRET_KEYS = ("youdao_app_secret", "deepl_api_key", "google_cloud_key")
+SECRET_KEYS = ("youdao_app_secret", "deepl_api_key", "google_cloud_key", "doubao_api_key")
 PREFIX = "dpapi:"
 
 

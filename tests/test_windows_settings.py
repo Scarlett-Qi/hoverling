@@ -13,7 +13,7 @@ class WindowsSettingsTests(unittest.TestCase):
             path = Path(temp) / "settings.json"
             settings = WindowsSettings(path)
             secrets = {"api_key": "example-ai-token", "deepl_api_key": "example-deepl-token",
-                       "google_cloud_key": "example-cloud-key", "youdao_app_secret": "example-youdao-secret"}
+                       "doubao_api_key": "example-ark-key", "google_cloud_key": "example-cloud-key", "youdao_app_secret": "example-youdao-secret"}
             settings.save(secrets)
             settings.save({"network_provider": "deepl"})
             reloaded = WindowsSettings(path)

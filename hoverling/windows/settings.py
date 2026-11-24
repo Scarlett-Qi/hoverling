@@ -5,14 +5,16 @@ from ..theme import CONTROL_RADIUS
 from ..translate import MYMEMORY_LANGUAGES, api_url, TranslationError
 
 PROVIDERS = {"deepl": "DeepL", "youdao": "有道智云", "google_cloud": "Google Cloud 翻译",
-             "mymemory": "MyMemory"}
+             "doubao": "豆包翻译 · 火山方舟", "mymemory": "MyMemory"}
 PROVIDER_NOTES = {
+    "doubao": "使用豆包翻译模型自动识别原文并译为中文。",
     "deepl": "自动识别原文，使用 DeepL API Key。",
     "youdao": "自动识别原文，使用有道文本翻译应用的 ID 和密钥。",
     "google_cloud": "自动识别原文，用量计入密钥所属的 Google Cloud 项目。",
     "mymemory": "请选择原文语言，再译为简体中文。",
 }
 FIELDS = {"youdao": [("youdao_app_key", "应用 ID"), ("youdao_app_secret", "应用密钥")],
+          "doubao": [("doubao_api_key", "火山方舟 API Key")],
           "google_cloud": [("google_cloud_key", "Cloud Translation API Key")],
           "deepl": [("deepl_api_key", "API Key")],
           "ai": [("api_base", "接口地址（Base URL）"), ("model", "模型名称"), ("api_key", "API Key")]}
@@ -96,7 +98,7 @@ class SettingsDialog(wx.Dialog):
                 box.AddSpacer(d(10))
                 box.Add(label(panel, field_name))
                 box.AddSpacer(d(4))
-                secret = key in ("api_key", "youdao_app_secret", "deepl_api_key", "google_cloud_key")
+                secret = key in ("api_key", "youdao_app_secret", "deepl_api_key", "google_cloud_key", "doubao_api_key")
                 field_box = Surface(panel, radius=CONTROL_RADIUS)
                 control = wx.TextCtrl(field_box, value=self.profiles.current[key] if mode == "ai" else vals[key], name=field_name,
                                       style=wx.BORDER_NONE | (wx.TE_PASSWORD if secret else 0))
