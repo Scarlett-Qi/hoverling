@@ -18,7 +18,8 @@ gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk, Pango
 
-from . import theme
+from . import __version__, theme
+from .updates import start_update_check
 from .core import OCR, ROOT, Target, explicit_target, target_at
 from .formatting import render_markdown
 from .profiles import AIProfiles
@@ -80,6 +81,34 @@ class KeyState:
             self.display = None
 
 
+def update_button(dialog):
+    button = Gtk.Button(label="检查更新")
+    release_url = None
+
+    def finished(message, url):
+        nonlocal release_url
+        if button.get_parent() is not None:
+            release_url = url
+            button.set_label(message)
+            button.set_sensitive(True)
+        return False
+
+    def clicked(_):
+        if release_url:
+            try:
+                Gtk.show_uri_on_window(dialog, release_url, Gdk.CURRENT_TIME)
+                finished("检查更新", None)
+            except GLib.Error:
+                button.set_label("重试打开新版")
+        else:
+            button.set_sensitive(False)
+            button.set_label("正在检查…")
+            start_update_check(GLib.idle_add, finished)
+
+    button.connect("clicked", clicked)
+    return button
+
+
 class App:
     def __init__(self, config: Settings | None = None):
         self.settings = config or Settings()
@@ -135,7 +164,10 @@ class App:
         self.window.connect("delete-event", self.close_control)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         self.window.add(box)
-        box.pack_start(label("指译 HoverLing", "title"), False, False, 0)
+        head = Gtk.Box(spacing=8)
+        head.pack_start(label("指译 HoverLing", "title"), False, False, 0)
+        head.pack_start(label(f"v{__version__}", "subtitle"), False, False, 0)
+        box.pack_start(head, False, False, 0)
         box.pack_start(label("自己划选文字，只翻译你选中的内容。", "subtitle"), False, False, 0)
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         card.get_style_context().add_class("card")
@@ -916,6 +948,10 @@ class App:
         ai.connect("toggled", lambda checkbox: ai_box.set_visible(checkbox.get_active()))
         error = label("", "note")
         box.pack_start(error, False, False, 0)
+        about = Gtk.Box(spacing=10)
+        about.pack_start(label(f"指译 HoverLing v{__version__}", "subtitle"), False, False, 0)
+        about.pack_end(update_button(dialog), False, False, 0)
+        box.pack_start(about, False, False, 0)
         dialog.show_all()
         while dialog.run() == Gtk.ResponseType.OK:
             store_profile()

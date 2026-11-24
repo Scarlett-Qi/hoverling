@@ -10,7 +10,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ("dictionary.sqlite3", "phrases.json", "ECDICT-LICENSE", "README.md", "THIRD_PARTY.md")
-CORE = ("__init__.py", "__main__.py", "core.py", "formatting.py", "profiles.py", "translate.py", "theme.py")
+CORE = ("__init__.py", "__main__.py", "core.py", "formatting.py", "profiles.py", "translate.py", "theme.py", "updates.py")
 EMBED = "python-3.13.12-embed-amd64.zip"
 WX = "wxpython-4.2.3-cp313-cp313-win_amd64.whl"
 COM = "comtypes-1.4.12-py3-none-any.whl"

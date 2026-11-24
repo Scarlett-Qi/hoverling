@@ -4,6 +4,8 @@
 
 **[下载最新版（Windows x64 / Linux X11）](https://github.com/Scarlett-Qi/hoverling/releases/latest)** · [历史版本](https://github.com/Scarlett-Qi/hoverling/releases)
 
+主窗口标题旁显示当前版本。在「取词与 AI 设置」底部点击「检查更新」可查询 GitHub 最新正式版，发现更新后点击「查看新版」即可打开发布页下载安装包。
+
 ## 开始使用
 
 | 平台 | 打开程序 | 卸载 |

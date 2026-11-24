@@ -6,6 +6,7 @@ import time
 
 import wx
 import wx.adv
+from .. import __version__
 from ..theme import CARD_PADDING, CONTROL_RADIUS, WORD
 from ..core import explicit_target
 from ..formatting import render_markdown
@@ -201,7 +202,10 @@ class Main(wx.Frame):
         panel.SetBackgroundColour(CANVAS)
         d = panel.FromDIP
         layout = wx.BoxSizer(wx.VERTICAL)
-        layout.Add(label(panel, "指译 HoverLing", 17, bold=True))
+        head = wx.BoxSizer(wx.HORIZONTAL)
+        head.Add(label(panel, "指译 HoverLing", 17, bold=True), 0, wx.ALIGN_CENTER_VERTICAL)
+        head.Add(label(panel, f"v{__version__}", 9, MUTED), 0, wx.ALIGN_CENTER_VERTICAL | wx.LEFT, d(8))
+        layout.Add(head, 0, wx.EXPAND)
         layout.AddSpacer(d(8))
         layout.Add(label(panel, "自己划选文字，只翻译你选中的内容。", 9, MUTED))
         layout.AddSpacer(d(14))

@@ -1,5 +1,7 @@
 import wx
 from .style import CANVAS, PAPER, Surface, action, label, typeface, window_corners
+from .. import __version__
+from ..updates import start_update_check
 from ..profiles import AIProfiles
 from ..theme import CONTROL_RADIUS
 from ..translate import MYMEMORY_LANGUAGES, api_url, TranslationError
@@ -120,6 +122,14 @@ class SettingsDialog(wx.Dialog):
             panel.SetSizer(box)
             layout.Add(panel, 0, wx.EXPAND)
             self.groups[mode] = panel
+        layout.AddSpacer(d(12))
+        about = wx.BoxSizer(wx.HORIZONTAL)
+        about.Add(label(self.scroll, f"指译 HoverLing v{__version__}", 9), 0, wx.ALIGN_CENTER_VERTICAL)
+        about.AddStretchSpacer()
+        self.release_url = None
+        self.update_button = action(self.scroll, "检查更新", self.check_updates)
+        about.Add(self.update_button, 0, wx.ALIGN_CENTER_VERTICAL)
+        layout.Add(about, 0, wx.EXPAND)
         contents = wx.BoxSizer(wx.VERTICAL)
         contents.Add(layout, 0, wx.ALL | wx.EXPAND, d(18))
         self.scroll.SetSizer(contents)
@@ -145,6 +155,28 @@ class SettingsDialog(wx.Dialog):
         self.Bind(wx.EVT_BUTTON, self.save, id=wx.ID_OK)
         self.refresh()
         self.CentreOnParent()
+
+    def check_updates(self):
+        if self.release_url:
+            if wx.LaunchDefaultBrowser(self.release_url):
+                self.update_checked("检查更新", None)
+            else:
+                self.update_checked("重试打开新版", self.release_url)
+            return
+        self.update_checked("正在检查…", None)
+        self.update_button.Disable()
+        start_update_check(wx.CallAfter, self.update_checked)
+
+    def update_checked(self, message, url):
+        if not self or self.IsBeingDeleted():
+            return
+        self.release_url = url
+        button = self.update_button
+        button.SetLabel(message)
+        button.SetMinSize((button.GetTextExtent(message).width + button.FromDIP(26), button.FromDIP(32)))
+        button.Enable()
+        self.scroll.Layout()
+        self.scroll.FitInside()
 
     def store_profile(self):
         for key in self.profiles.current:
